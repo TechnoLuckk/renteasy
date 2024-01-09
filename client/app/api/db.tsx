@@ -15,6 +15,7 @@ export const convertToPSQLArray = (
   braceTypeClose: string,
   quotes: string
 ) => {
+  if (arr.length === 0) return (braceTypeOpen + braceTypeClose)
   if (!addQuotes) {
     quotes = ``;
   }

@@ -1,12 +1,11 @@
 "use client";
-import { IKImage, IKUpload } from "imagekitio-react";
-import ImageContext from "./ImageContext";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Calendar } from "@/components/ui/calendar";
 import { useRouter } from "next/navigation";
 import ImageUploading, { ImageListType } from "react-images-uploading";
 import { Icons } from "@/components/ui/icons";
+import { ProductData } from "../products/category/[slug]/page";
 
 type UploadImageResponse = {
   fileId: string;
@@ -19,43 +18,70 @@ type UploadImageResponse = {
 
 const urlEndpoint = "https://ik.imagekit.io/m3c9xvobb";
 
-export default function ListItem() {
-  const onError = (err: any) => {
-    console.log("Error", err);
-  };
-
-  const onSuccess = (res: UploadImageResponse) => {
-    console.log("Success", res);
-    setUploadedImages([...uploadedImages, res]);
-  };
-
+export default function ListItem({
+  product_details,
+}: {
+  product_details: ProductData;
+}) {
   const router = useRouter();
 
   const itemListFormSubmit: any = (e: SubmitEvent) => {
     e.preventDefault();
-    const data = {
-      name: itemName.current.value,
-      price: itemPrice.current.value,
-      category: itemCategory.current.value,
-      seller_user_id: user.id,
-      description: itemDescription.current.value,
-      images: uploadedImages,
-      listing_price: itemListingPrice.current.value,
-      unavailable_dates: unavailableDates.map((date) =>
-        date.toISOString().slice(0, 10)
-      ),
-    };
-    fetch(`${process.env.NEXT_PUBLIC_HOST_ADDRESS}/api/listing/new`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
-      .then((res) => res.json())
-      .then((resJson) => {
-        console.log("Done");
-        // router.push("/products/seller/"+user.id+"/")
-        router.push("/thankyou")
+    if (product_details) {
+      // Send fetch to update route instead of new listing route
+      // If the image has a dataURL property, then
+      const data = {
+        product_id: product_details.product_id,
+        name: itemName.current.value,
+        price: itemPrice.current.value,
+        category: itemCategory.current.value,
+        seller_user_id: user.id,
+        description: itemDescription.current.value,
+        images: uploadedImages,
+        listing_price: itemListingPrice.current.value,
+        unavailable_dates: unavailableDates.map((date) =>
+          date.toISOString().slice(0, 10)
+        ),
+      };
+      fetch(`${process.env.NEXT_PUBLIC_HOST_ADDRESS}/api/listing/update`, {
+        method: "POST",
+        body: JSON.stringify(data),
       })
-      .catch((err) => console.error(err));
+        .then((res) => res.json())
+        .then((resJson) => {
+          console.log(resJson)
+          if (resJson.done) {
+            console.log("Done");
+            window.location.reload();
+          }
+        })
+        .catch((err) => console.error(err));
+    } else {
+      const data = {
+        name: itemName.current.value,
+        price: itemPrice.current.value,
+        category: itemCategory.current.value,
+        seller_user_id: user.id,
+        description: itemDescription.current.value,
+        images: uploadedImages,
+        listing_price: itemListingPrice.current.value,
+        unavailable_dates: unavailableDates.map((date) =>
+          date.toISOString().slice(0, 10)
+        ),
+      };
+      fetch(`${process.env.NEXT_PUBLIC_HOST_ADDRESS}/api/listing/new`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      })
+        .then((res) => { console.log(res, res.json()); return res.json();})
+        .then((resJson) => {
+          console.log(resJson)
+          console.log("Done");
+          // router.push("/products/seller/"+user.id+"/")
+          router.push("/thankyou");
+        })
+        .catch((err) => console.error(err));
+    }
   };
   const [uploadedImages, setUploadedImages] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState<Date[] | undefined>(
@@ -73,8 +99,26 @@ export default function ListItem() {
     imageList: ImageListType,
     addUpdateIndex: number[] | undefined
   ) => {
+    console.log(imageList);
     setUploadedImages(imageList as never[]);
   };
+
+  useEffect(() => {
+    if (product_details) {
+      itemName.current.value = product_details.name;
+      itemPrice.current.value = product_details.price;
+      itemListingPrice.current.value = product_details.listing_price;
+      itemCategory.current.value = product_details.category;
+      itemDescription.current.value = product_details.description;
+      setUnavailableDates(
+        product_details.unavailable_dates.map(
+          (unavailableDate) => new Date(unavailableDate)
+        )
+      );
+      console.log("Setting uploaded images to: ", product_details.images);
+      setUploadedImages(product_details.images);
+    }
+  }, []);
 
   if (!isLoaded || !isSignedIn) {
     return null;
@@ -106,14 +150,18 @@ export default function ListItem() {
                   <div className="text-slate-500">
                     Click or Drag and Drop Images below to upload
                   </div>
-                  <div
-                    className="flex flex-row gap-10 border-2 border-sky-500 overflow-x-auto p-5 h-[180px] w-full rounded"
-                  >
+                  <div className="flex flex-row gap-10 border-2 border-sky-500 overflow-x-auto p-5 h-[180px] w-full rounded">
                     {uploadedImages.length > 0 ? (
                       imageList.map((image, index) => (
                         <div key={index} className="w-40 h-24">
                           <div className="h-full w-full">
-                            <img src={image.dataURL} />
+                            <img
+                              src={
+                                product_details && !image.dataURL
+                                  ? (image as never)
+                                  : image.dataURL
+                              }
+                            />
                           </div>
                           <div className="flex flex-row justify-center gap-2 p-2">
                             <button
@@ -232,7 +280,9 @@ export default function ListItem() {
               >
                 <option>Select Category</option>
                 <option value="electronics">Electronics</option>
-                <option value="kitchen-supplies">Kitchen or other Home Supplies</option>
+                <option value="kitchen-supplies">
+                  Kitchen or other Home Supplies
+                </option>
                 <option value="musical-instruments">Musical Instruments</option>
                 <option value="expensive-clothes">Expensive Clothes</option>
                 <option value="sport-equipments">Sport Equipments</option>
@@ -279,7 +329,8 @@ export default function ListItem() {
                 />
               </div>
               <small className="block">
-                Please enter the dates when the item will not be available. You can always change them later.
+                Please enter the dates when the item will not be available. You
+                can always change them later.
               </small>
             </div>
             <button className="bg-sky-500 text-gray-50 font-bold p-2 rounded my-10">
